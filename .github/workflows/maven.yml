@@ -1,0 +1,61 @@
+name: Java CI with Maven and Playwright
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build and run Unit & BDD tests
+      run: mvn clean install
+      working-directory: .
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Install Playwright dependencies
+      run: |
+        npm install
+        # Asegurar permisos de ejecución para los binarios de node
+        chmod -R +x node_modules/.bin/
+      working-directory: ./e2e-tests
+
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps
+      working-directory: ./e2e-tests
+
+    - name: Start Spring Boot Application
+      run: |
+        mvn spring-boot:run &
+        echo "Waiting for Spring Boot to start..."
+        # Esperar hasta que el puerto 8081 esté respondiendo
+        timeout 120s bash -c 'until curl -s localhost:8081 > /dev/null; do sleep 5; done'
+      working-directory: .
+
+    - name: Run Playwright ATDD tests
+      run: npx playwright test
+      working-directory: ./e2e-tests
+
+    - name: Upload Playwright test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: ./e2e-tests/playwright-report/
+        retention-days: 30
